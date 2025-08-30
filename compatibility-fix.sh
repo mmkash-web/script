@@ -2,6 +2,13 @@
 # Universal Compatibility Fix for VPN Scripts
 # This script updates the existing VPN installation scripts to work with all Ubuntu and Debian versions
 
+# Auto-fix line endings if needed
+if [[ $(head -c 3 "$0" | od -c | grep -q "\\r\\n") ]]; then
+    echo "Fixing line endings..."
+    sed -i 's/\r$//' "$0"
+    exec bash "$0" "$@"
+fi
+
 echo "=== Universal Compatibility Fix for VPN Scripts ==="
 echo "This script will update your VPN installation to work with all Ubuntu and Debian versions"
 echo ""
