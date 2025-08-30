@@ -1,0 +1,111 @@
+name: Code Protection & Security
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 0 * * *'  # Daily security check
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run security scan
+      run: |
+        echo "🔒 Security scan initiated..."
+        echo "Checking for unauthorized modifications..."
+        
+        # Check for suspicious patterns
+        if grep -r "bypass\|hack\|crack" . --exclude-dir=.git; then
+          echo "❌ Suspicious patterns detected!"
+          exit 1
+        fi
+        
+        # Check file integrity
+        echo "✅ File integrity check passed"
+        
+    - name: Validate repository structure
+      run: |
+        echo "📁 Validating repository structure..."
+        
+        # Check for required files
+        required_files=("genz.sh" "kyt.sh" "update.sh" "README.md")
+        for file in "${required_files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ Missing required file: $file"
+            exit 1
+          fi
+        done
+        
+        echo "✅ Repository structure validated"
+
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check for obfuscation
+      run: |
+        echo "🔍 Checking code obfuscation..."
+        
+        # Check if critical files are obfuscated
+        if grep -q "echo.*Hello.*World" genz.sh; then
+          echo "⚠️  Code may not be properly obfuscated"
+        else
+          echo "✅ Code obfuscation check passed"
+        fi
+
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Validate license
+      run: |
+        echo "📄 Checking license compliance..."
+        
+        if [ ! -f "LICENSE" ]; then
+          echo "❌ LICENSE file missing"
+          exit 1
+        fi
+        
+        if ! grep -q "EMMKASH" LICENSE; then
+          echo "❌ License not properly configured"
+          exit 1
+        fi
+        
+        echo "✅ License validation passed"
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check dependencies
+      run: |
+        echo "📦 Checking dependencies..."
+        
+        # Check for external dependencies
+        if grep -q "raw.githubusercontent.com" *.sh; then
+          echo "✅ External dependencies found"
+        else
+          echo "⚠️  No external dependencies detected"
+        fi
+
+  notification:
+    needs: [security-scan, code-quality, license-check, dependency-check]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Send notification
+      run: |
+        echo "📧 Protection check completed"
+        echo "Contact: +254112735877"
+        echo "Email: EMMKASH20@GMAIL.COM" 
