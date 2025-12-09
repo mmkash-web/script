@@ -260,11 +260,16 @@ function first_setup(){
         
         # Add HAProxy repository based on Ubuntu version
         VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-        if [ "$VERSION_NUM" -ge 2004 ]; then
-            # Ubuntu 20.04+ - use newer HAProxy
-            add-apt-repository ppa:vbernat/haproxy-2.0 -y
+        if [ "$VERSION_NUM" -ge 2204 ]; then
+            # Ubuntu 22.04+ - use default repo HAProxy (2.4+)
+            echo "Installing HAProxy from default Ubuntu 22+ repos..."
             update_packages
-            install_package "haproxy=2.0.*"
+            install_package "haproxy"
+        elif [ "$VERSION_NUM" -ge 2004 ]; then
+            # Ubuntu 20.04-21.10 - use HAProxy 2.4 PPA
+            add-apt-repository ppa:vbernat/haproxy-2.4 -y
+            update_packages
+            install_package "haproxy"
         else
             # Ubuntu 16.04-19.10 - use older HAProxy
             add-apt-repository ppa:vbernat/haproxy-1.8 -y
@@ -277,12 +282,17 @@ function first_setup(){
         
         # Add HAProxy repository based on Debian version
         VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-        if [ "$VERSION_NUM" -ge 110 ]; then
-            # Debian 11+ - use newer HAProxy
+        if [ "$VERSION_NUM" -ge 120 ]; then
+            # Debian 12+ - use default repo
+            echo "Installing HAProxy from default Debian 12+ repos..."
+            update_packages
+            install_package "haproxy"
+        elif [ "$VERSION_NUM" -ge 110 ]; then
+            # Debian 11 - use HAProxy 2.4
             curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
             echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net bullseye-backports-2.4 main >/etc/apt/sources.list.d/haproxy.list
             update_packages
-            install_package "haproxy=2.4.*"
+            install_package "haproxy"
         else
             # Debian 8-10 - use older HAProxy
             curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
@@ -703,8 +713,32 @@ print_install "Installing Dropbear"
 apt-get install dropbear -y > /dev/null 2>&1
 wget -q -O /etc/default/dropbear "${REPO}ubuntu/dropbear.conf"
 chmod +x /etc/default/dropbear
-/etc/init.d/dropbear restart
-/etc/init.d/dropbear status
+
+# Generate host keys if missing (required for Ubuntu 22+)
+mkdir -p /etc/dropbear
+if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
+    dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key 2>/dev/null
+fi
+if [ ! -f /etc/dropbear/dropbear_ecdsa_host_key ]; then
+    dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key 2>/dev/null
+fi
+
+# Create systemd override for Ubuntu 22+ compatibility
+mkdir -p /etc/systemd/system/dropbear.service.d/
+cat > /etc/systemd/system/dropbear.service.d/override.conf << 'DROPEOF'
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/dropbear -F -p 143 -p 109 -b /etc/kyt.txt
+DROPEOF
+
+# Reload systemd and restart dropbear
+systemctl daemon-reload
+systemctl enable dropbear
+systemctl restart dropbear
+
+# Also try init.d for older systems
+/etc/init.d/dropbear restart 2>/dev/null
+/etc/init.d/dropbear status 2>/dev/null
 print_success "Dropbear"
 }
 
@@ -873,26 +907,58 @@ print_success "ePro WebSocket Proxy"
 function ins_restart(){
 clear
 print_install "Restarting  All Packet"
-/etc/init.d/nginx restart
-/etc/init.d/openvpn restart
-/etc/init.d/ssh restart
-/etc/init.d/dropbear restart
-/etc/init.d/fail2ban restart
-/etc/init.d/vnstat restart
-systemctl restart haproxy
-/etc/init.d/cron restart
-    systemctl daemon-reload
-    systemctl start netfilter-persistent
-    systemctl enable --now nginx
-    systemctl enable --now xray
-    systemctl enable --now rc-local
-    systemctl enable --now dropbear
-    systemctl enable --now openvpn
-    systemctl enable --now cron
-    systemctl enable --now haproxy
-    systemctl enable --now netfilter-persistent
-    systemctl enable --now ws
-    systemctl enable --now fail2ban
+
+# Reload systemd first
+systemctl daemon-reload
+
+# Create HAProxy run directory (required for Ubuntu 22+)
+mkdir -p /run/haproxy
+chown haproxy:haproxy /run/haproxy 2>/dev/null
+
+# Restart services using systemctl (preferred for Ubuntu 22+)
+systemctl restart nginx 2>/dev/null || /etc/init.d/nginx restart
+systemctl restart openvpn 2>/dev/null || /etc/init.d/openvpn restart
+systemctl restart ssh 2>/dev/null || /etc/init.d/ssh restart
+systemctl restart dropbear 2>/dev/null || /etc/init.d/dropbear restart
+systemctl restart fail2ban 2>/dev/null || /etc/init.d/fail2ban restart
+systemctl restart vnstat 2>/dev/null || /etc/init.d/vnstat restart
+systemctl restart haproxy 2>/dev/null
+systemctl restart cron 2>/dev/null || /etc/init.d/cron restart
+
+# Enable all services
+systemctl enable nginx 2>/dev/null
+systemctl enable xray 2>/dev/null
+systemctl enable rc-local 2>/dev/null
+systemctl enable dropbear 2>/dev/null
+systemctl enable openvpn 2>/dev/null
+systemctl enable cron 2>/dev/null
+systemctl enable haproxy 2>/dev/null
+systemctl enable netfilter-persistent 2>/dev/null
+systemctl enable ws 2>/dev/null
+systemctl enable fail2ban 2>/dev/null
+
+# Start services
+systemctl start netfilter-persistent 2>/dev/null
+systemctl start nginx 2>/dev/null
+systemctl start xray 2>/dev/null
+systemctl start dropbear 2>/dev/null
+systemctl start haproxy 2>/dev/null
+systemctl start ws 2>/dev/null
+
+# Wait for services to start
+sleep 2
+
+# Check and report service status
+echo ""
+echo "Checking service status..."
+for svc in nginx haproxy dropbear xray; do
+    if systemctl is-active --quiet $svc 2>/dev/null; then
+        echo -e "${green}✓ $svc is running${NC}"
+    else
+        echo -e "${RED}✗ $svc failed to start - check: journalctl -xe -u $svc${NC}"
+    fi
+done
+
 history -c
 echo "unset HISTFILE" >> /etc/profile
 
