@@ -197,22 +197,28 @@ if [ ! -f /etc/dropbear/dropbear_ecdsa_host_key ]; then
     dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key
 fi
 
-# Reload and start dropbear
-systemctl daemon-reload
-systemctl enable dropbear
-systemctl restart dropbear
+# For Ubuntu 22+, dropbear uses init.d not native systemd
+# Avoid systemctl enable/restart which can hang
+/etc/init.d/dropbear stop 2>/dev/null
+sleep 1
+/etc/init.d/dropbear start 2>/dev/null
 
-# Also try init.d method
-/etc/init.d/dropbear restart 2>/dev/null
+# If init.d fails, start manually
+if ! pgrep -x "dropbear" > /dev/null; then
+    echo "Starting dropbear manually..."
+    /usr/sbin/dropbear -p 143 -p 109 -b /etc/kyt.txt 2>/dev/null &
+fi
 
 echo ""
 echo "Step 5: Restarting all services..."
 
-systemctl restart nginx
-systemctl restart haproxy
-systemctl restart dropbear
+systemctl restart nginx 2>/dev/null
+systemctl restart haproxy 2>/dev/null
 systemctl restart xray 2>/dev/null
 systemctl restart ws 2>/dev/null
+
+# Dropbear via init.d to avoid hang
+/etc/init.d/dropbear restart 2>/dev/null
 
 # Wait for services to start
 sleep 3

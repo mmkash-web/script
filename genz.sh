@@ -723,22 +723,20 @@ if [ ! -f /etc/dropbear/dropbear_ecdsa_host_key ]; then
     dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key 2>/dev/null
 fi
 
-# Create systemd override for Ubuntu 22+ compatibility
-mkdir -p /etc/systemd/system/dropbear.service.d/
-cat > /etc/systemd/system/dropbear.service.d/override.conf << 'DROPEOF'
-[Service]
-ExecStart=
-ExecStart=/usr/sbin/dropbear -F -p 143 -p 109 -b /etc/kyt.txt
-DROPEOF
+# For Ubuntu 22+, dropbear uses init.d not native systemd
+# Just use init.d directly to avoid hanging
+/etc/init.d/dropbear stop 2>/dev/null
+sleep 1
+/etc/init.d/dropbear start 2>/dev/null
 
-# Reload systemd and restart dropbear
-systemctl daemon-reload
-systemctl enable dropbear
-systemctl restart dropbear
+# Check if running
+if pgrep -x "dropbear" > /dev/null; then
+    echo "Dropbear is running"
+else
+    echo "Starting dropbear manually..."
+    /usr/sbin/dropbear -p 143 -p 109 -b /etc/kyt.txt 2>/dev/null &
+fi
 
-# Also try init.d for older systems
-/etc/init.d/dropbear restart 2>/dev/null
-/etc/init.d/dropbear status 2>/dev/null
 print_success "Dropbear"
 }
 
@@ -951,17 +949,18 @@ fi
 systemctl restart nginx 2>/dev/null
 systemctl restart openvpn 2>/dev/null
 systemctl restart ssh 2>/dev/null
-systemctl restart dropbear 2>/dev/null
 systemctl restart fail2ban 2>/dev/null
 systemctl restart vnstat 2>/dev/null
 systemctl restart haproxy 2>/dev/null
 systemctl restart cron 2>/dev/null
 
-# Enable all services
+# Dropbear uses init.d on Ubuntu 22+, not native systemd
+/etc/init.d/dropbear restart 2>/dev/null || /usr/sbin/dropbear -p 143 -p 109 2>/dev/null &
+
+# Enable services (skip dropbear to avoid hang)
 systemctl enable nginx 2>/dev/null
 systemctl enable xray 2>/dev/null
 systemctl enable rc-local 2>/dev/null
-systemctl enable dropbear 2>/dev/null
 systemctl enable openvpn 2>/dev/null
 systemctl enable cron 2>/dev/null
 systemctl enable haproxy 2>/dev/null
@@ -973,7 +972,6 @@ systemctl enable fail2ban 2>/dev/null
 systemctl start netfilter-persistent 2>/dev/null
 systemctl start nginx 2>/dev/null
 systemctl start xray 2>/dev/null
-systemctl start dropbear 2>/dev/null
 systemctl start haproxy 2>/dev/null
 systemctl start ws 2>/dev/null
 
