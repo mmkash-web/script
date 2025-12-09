@@ -128,10 +128,21 @@ if [ $? -ne 0 ]; then
     nginx -t
 fi
 
-# Check if SSL certificates exist
+# Check if SSL certificates exist, create temporary ones if not
 if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
-    echo -e "${RED}Warning: SSL certificates not found at /etc/xray/${NC}"
-    echo "You may need to run 'fixcert' from the menu to regenerate certificates"
+    echo -e "${RED}SSL certificates not found, creating temporary self-signed certs...${NC}"
+    mkdir -p /etc/xray
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/xray/xray.key -out /etc/xray/xray.crt \
+        -subj "/C=US/ST=State/L=City/O=Org/CN=localhost" 2>/dev/null
+    chmod 644 /etc/xray/xray.crt
+    chmod 600 /etc/xray/xray.key
+    echo -e "${GREEN}Temporary SSL certificates created${NC}"
+    echo "Run 'fixcert' from menu later to get proper Let's Encrypt certificates"
+    
+    # Also create haproxy cert
+    cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/haproxy/hap.pem
+    chmod 600 /etc/haproxy/hap.pem
 fi
 
 # Enable and start nginx

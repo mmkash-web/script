@@ -915,15 +915,47 @@ systemctl daemon-reload
 mkdir -p /run/haproxy
 chown haproxy:haproxy /run/haproxy 2>/dev/null
 
+# Check if SSL certs exist for nginx, create dummy if not
+if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
+    echo "Creating temporary SSL certificates..."
+    mkdir -p /etc/xray
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/xray/xray.key -out /etc/xray/xray.crt \
+        -subj "/C=US/ST=State/L=City/O=Org/CN=localhost" 2>/dev/null
+    chmod 644 /etc/xray/xray.crt
+    chmod 600 /etc/xray/xray.key
+fi
+
+# Test nginx config before restart
+nginx -t 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "Nginx config error, attempting to fix..."
+    # Remove problematic http2 directive if present
+    sed -i 's/ http2 / /g' /etc/nginx/conf.d/xray.conf 2>/dev/null
+    sed -i 's/ssl_protocols TLSv1 //g' /etc/nginx/conf.d/xray.conf 2>/dev/null
+    sed -i 's/TLSv1.1 //g' /etc/nginx/conf.d/xray.conf 2>/dev/null
+    
+    # Test again after fixes
+    nginx -t 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "Still failing, checking SSL certs..."
+        # If still failing, might be SSL cert issue - temporarily disable SSL server block
+        if [ ! -f /etc/xray/xray.crt ]; then
+            echo "SSL cert missing, commenting out SSL server block temporarily..."
+            sed -i '/listen 81 ssl/,/^}/s/^/#/' /etc/nginx/conf.d/xray.conf 2>/dev/null
+        fi
+    fi
+fi
+
 # Restart services using systemctl (preferred for Ubuntu 22+)
-systemctl restart nginx 2>/dev/null || /etc/init.d/nginx restart
-systemctl restart openvpn 2>/dev/null || /etc/init.d/openvpn restart
-systemctl restart ssh 2>/dev/null || /etc/init.d/ssh restart
-systemctl restart dropbear 2>/dev/null || /etc/init.d/dropbear restart
-systemctl restart fail2ban 2>/dev/null || /etc/init.d/fail2ban restart
-systemctl restart vnstat 2>/dev/null || /etc/init.d/vnstat restart
+systemctl restart nginx 2>/dev/null
+systemctl restart openvpn 2>/dev/null
+systemctl restart ssh 2>/dev/null
+systemctl restart dropbear 2>/dev/null
+systemctl restart fail2ban 2>/dev/null
+systemctl restart vnstat 2>/dev/null
 systemctl restart haproxy 2>/dev/null
-systemctl restart cron 2>/dev/null || /etc/init.d/cron restart
+systemctl restart cron 2>/dev/null
 
 # Enable all services
 systemctl enable nginx 2>/dev/null
