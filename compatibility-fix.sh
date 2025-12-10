@@ -63,16 +63,11 @@ echo "Step 2: Setting up HAProxy repositories based on OS version..."
 
 if [[ "$OS_ID" == "ubuntu" ]]; then
     VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-    if [ "$VERSION_NUM" -ge 2204 ]; then
-        # Ubuntu 22.04+ - use default repo (HAProxy 2.4+)
-        echo "Installing HAProxy from default Ubuntu 22+ repos..."
+    if [ "$VERSION_NUM" -ge 2004 ]; then
+        # Ubuntu 20.04+
+        add-apt-repository ppa:vbernat/haproxy-2.0 -y
         update_pkgs
-        install_pkg "haproxy"
-    elif [ "$VERSION_NUM" -ge 2004 ]; then
-        # Ubuntu 20.04-21.10 - use HAProxy 2.4 PPA
-        add-apt-repository ppa:vbernat/haproxy-2.4 -y
-        update_pkgs
-        install_pkg "haproxy"
+        install_pkg "haproxy=2.0.*"
     else
         # Ubuntu 16.04-19.10
         add-apt-repository ppa:vbernat/haproxy-1.8 -y
@@ -81,17 +76,12 @@ if [[ "$OS_ID" == "ubuntu" ]]; then
     fi
 elif [[ "$OS_ID" == "debian" ]]; then
     VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-    if [ "$VERSION_NUM" -ge 120 ]; then
-        # Debian 12+ - use default repo
-        echo "Installing HAProxy from default Debian 12+ repos..."
-        update_pkgs
-        install_pkg "haproxy"
-    elif [ "$VERSION_NUM" -ge 110 ]; then
-        # Debian 11
+    if [ "$VERSION_NUM" -ge 110 ]; then
+        # Debian 11+
         curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
         echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net bullseye-backports-2.4 main >/etc/apt/sources.list.d/haproxy.list
         update_pkgs
-        install_pkg "haproxy"
+        install_pkg "haproxy=2.4.*"
     else
         # Debian 8-10
         curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
