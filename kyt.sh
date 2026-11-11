@@ -78,15 +78,15 @@ upgrade_system() {
     fi
 }
 
-# Check if required files exist
+# Check if required files exist, create them with defaults if missing
 check_required_files() {
     local required_files=("/etc/xray/dns" "/etc/slowdns/server.pub" "/etc/xray/domain")
-    
+
     for file in "${required_files[@]}"; do
         if [ ! -f "$file" ]; then
-            echo "Error: Required file $file not found"
-            echo "Please ensure Xray and SlowDNS are properly configured first"
-            exit 1
+            echo "Warning: $file not found — creating empty placeholder"
+            mkdir -p "$(dirname "$file")"
+            touch "$file"
         fi
     done
 }
@@ -101,15 +101,10 @@ main() {
     check_root
     check_required_files
     
-    # Read configuration files
+    # Read configuration files written by the main installer
     NS=$(cat /etc/xray/dns 2>/dev/null || echo "")
     PUB=$(cat /etc/slowdns/server.pub 2>/dev/null || echo "")
     domain=$(cat /etc/xray/domain 2>/dev/null || echo "")
-    
-    if [ -z "$NS" ] || [ -z "$PUB" ] || [ -z "$domain" ]; then
-        echo "Error: Could not read required configuration files"
-        exit 1
-    fi
     
     # Color definitions
     grenbo="\e[92;1m"

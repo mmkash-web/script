@@ -155,7 +155,7 @@ check_network_connections() {
 
 # Check for file modifications
 check_file_modifications() {
-    local protected_files=("genz.sh" "kyt.sh" "update.sh" "menu-protected.sh")
+    local protected_files=("script.sh" "kyt.sh" "update.sh" "menu-protected.sh")
     
     for file in "${protected_files[@]}"; do
         if [ -f "$file" ]; then

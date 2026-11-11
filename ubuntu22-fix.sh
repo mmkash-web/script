@@ -50,48 +50,98 @@ echo "Step 2: Fixing HAProxy for Ubuntu 22+..."
 # Stop haproxy first
 systemctl stop haproxy 2>/dev/null
 
-# Remove old haproxy and install compatible version
+# Remove old haproxy and install the correct version for this OS release
 apt remove --purge haproxy -y 2>/dev/null
 apt autoremove -y 2>/dev/null
 
-# For Ubuntu 22+, install from default repos (HAProxy 2.4+)
-apt update -y
-apt install -y haproxy
-
-# Create HAProxy directory if not exists
-mkdir -p /run/haproxy
-chown haproxy:haproxy /run/haproxy
-
-# Fix HAProxy config for newer versions
-if [ -f /etc/haproxy/haproxy.cfg ]; then
-    # Backup original
-    cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak
-    
-    # Remove deprecated bind-process directive
-    sed -i 's/bind-process 1 2//g' /etc/haproxy/haproxy.cfg
-    sed -i 's/bind-process 1//g' /etc/haproxy/haproxy.cfg
-    
-    # Fix TFO issues - remove tfo if causing problems
-    # sed -i 's/ tfo//g' /etc/haproxy/haproxy.cfg
-    
-    echo -e "${GREEN}HAProxy config updated${NC}"
-fi
-
-# Check if certificate exists
-if [ ! -f /etc/haproxy/hap.pem ]; then
-    echo "Creating HAProxy certificate..."
-    if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
-        cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/haproxy/hap.pem
-        chmod 600 /etc/haproxy/hap.pem
+# Install the appropriate HAProxy version for the detected OS
+VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
+if [[ "$OS_ID" == "ubuntu" ]]; then
+    apt install -y software-properties-common
+    if [ "$VERSION_NUM" -ge 2404 ]; then
+        # Ubuntu 24.04+ — HAProxy 2.8
+        add-apt-repository ppa:vbernat/haproxy-2.8 -y
+        apt update -y
+        apt install -y haproxy=2.8.* || apt install -y haproxy
+    elif [ "$VERSION_NUM" -ge 2204 ]; then
+        # Ubuntu 22.04 — HAProxy 2.6
+        add-apt-repository ppa:vbernat/haproxy-2.6 -y
+        apt update -y
+        apt install -y haproxy=2.6.* || apt install -y haproxy
+    elif [ "$VERSION_NUM" -ge 2004 ]; then
+        # Ubuntu 20.04 — HAProxy 2.0 (unchanged, was already working)
+        add-apt-repository ppa:vbernat/haproxy-2.0 -y
+        apt update -y
+        apt install -y haproxy=2.0.*
     else
-        echo -e "${RED}Warning: SSL certificates not found${NC}"
+        apt update -y
+        apt install -y haproxy
     fi
+else
+    apt update -y
+    apt install -y haproxy
 fi
 
-# Enable and start haproxy
-systemctl daemon-reload
-systemctl enable haproxy
-systemctl start haproxy
+# Create HAProxy runtime directory if needed
+mkdir -p /run/haproxy
+chown haproxy:haproxy /run/haproxy 2>/dev/null || true
+
+# ── Version-aware HAProxy configuration fix ──────────────────────────────────
+# bind-process was removed in HAProxy 2.1 — it causes a fatal parse error on
+# 2.4 / 2.6 / 2.8.  On 1.8 / 2.0 it is accepted but effectively a no-op in
+# single-process (daemon) mode, so removing it is safe on those versions too.
+#
+# pidfile: vbernat PPA systemd units on 2.0+ pass -p /run/haproxy.pid as an
+# ExecStart argument; having it in haproxy.cfg as well causes a "already
+# specified" warning.  We strip it here as well.
+# ─────────────────────────────────────────────────────────────────────────────
+
+CFG="/etc/haproxy/haproxy.cfg"
+
+if [ -f "$CFG" ]; then
+    BACKUP="${CFG}.bak.$(date +%Y%m%d%H%M%S)"
+    cp "$CFG" "$BACKUP"
+    echo -e "${GREEN}Config backed up → $BACKUP${NC}"
+
+    # Remove deprecated directives
+    sed -i '/^[[:space:]]*bind-process[[:space:]]/d' "$CFG"
+    sed -i '/^[[:space:]]*pidfile[[:space:]]/d'       "$CFG"
+
+    echo -e "${GREEN}Removed bind-process and pidfile directives${NC}"
+
+    # Validate before restarting
+    VALIDATE_OUT=$(haproxy -c -f "$CFG" 2>&1)
+    VALIDATE_RC=$?
+
+    if [ $VALIDATE_RC -ne 0 ]; then
+        echo -e "${RED}HAProxy config validation FAILED:${NC}"
+        echo "$VALIDATE_OUT"
+        echo -e "${RED}Restoring backup...${NC}"
+        cp "$BACKUP" "$CFG"
+        echo -e "${RED}Backup restored. HAProxy NOT restarted. Fix $CFG manually.${NC}"
+    else
+        echo -e "${GREEN}HAProxy config validated successfully${NC}"
+
+        # Check if certificate exists; rebuild if missing
+        if [ ! -f /etc/haproxy/hap.pem ]; then
+            echo "Creating HAProxy certificate..."
+            if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
+                cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/haproxy/hap.pem
+                chmod 600 /etc/haproxy/hap.pem
+            else
+                echo -e "${RED}Warning: SSL certificates not found at /etc/xray/xray.crt / .key${NC}"
+            fi
+        fi
+
+        systemctl daemon-reload
+        systemctl reset-failed haproxy 2>/dev/null || true
+        systemctl enable haproxy
+        systemctl restart haproxy
+        echo -e "${GREEN}HAProxy config updated and restarted${NC}"
+    fi
+else
+    echo -e "${RED}Warning: $CFG not found — HAProxy not yet configured${NC}"
+fi
 
 echo ""
 echo "Step 3: Fixing Nginx..."

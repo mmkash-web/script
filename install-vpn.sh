@@ -43,8 +43,8 @@ fi
 
 # Download and run main installer
 echo "Step 3: Installing VPN..."
-if download_and_fix "https://raw.githubusercontent.com/mmkash-web/script/main/genz.sh" "genz.sh"; then
-    ./genz.sh
+if download_and_fix "https://raw.githubusercontent.com/mmkash-web/script/main/script.sh" "script.sh"; then
+    ./script.sh
 else
     echo "❌ Failed to download main installer"
     exit 1

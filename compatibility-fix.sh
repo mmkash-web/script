@@ -63,31 +63,73 @@ echo "Step 2: Setting up HAProxy repositories based on OS version..."
 
 if [[ "$OS_ID" == "ubuntu" ]]; then
     VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-    if [ "$VERSION_NUM" -ge 2004 ]; then
-        # Ubuntu 20.04+
+    install_pkg "software-properties-common"
+    if [ "$VERSION_NUM" -ge 2404 ]; then
+        # Ubuntu 24.04+ — HAProxy 2.8 (bind-process removed in 2.1; must use 2.6+)
+        add-apt-repository ppa:vbernat/haproxy-2.8 -y
+        update_pkgs
+        install_pkg "haproxy=2.8.*" || install_pkg "haproxy"
+    elif [ "$VERSION_NUM" -ge 2204 ]; then
+        # Ubuntu 22.04 — HAProxy 2.6
+        add-apt-repository ppa:vbernat/haproxy-2.6 -y
+        update_pkgs
+        install_pkg "haproxy=2.6.*" || install_pkg "haproxy"
+    elif [ "$VERSION_NUM" -ge 2004 ]; then
+        # Ubuntu 20.04 — HAProxy 2.0 (unchanged, was already working)
         add-apt-repository ppa:vbernat/haproxy-2.0 -y
         update_pkgs
         install_pkg "haproxy=2.0.*"
     else
-        # Ubuntu 16.04-19.10
+        # Ubuntu 16.04-19.10 — HAProxy 1.8
         add-apt-repository ppa:vbernat/haproxy-1.8 -y
         update_pkgs
         install_pkg "haproxy=1.8.*"
     fi
 elif [[ "$OS_ID" == "debian" ]]; then
     VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-    if [ "$VERSION_NUM" -ge 110 ]; then
-        # Debian 11+
+    if [ "$VERSION_NUM" -ge 120 ]; then
+        # Debian 12 (bookworm) — HAProxy 2.6
+        curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
+        echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net bookworm-backports-2.6 main >/etc/apt/sources.list.d/haproxy.list
+        update_pkgs
+        install_pkg "haproxy=2.6.*" || install_pkg "haproxy"
+    elif [ "$VERSION_NUM" -ge 110 ]; then
+        # Debian 11 (bullseye) — HAProxy 2.4
         curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
         echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net bullseye-backports-2.4 main >/etc/apt/sources.list.d/haproxy.list
         update_pkgs
         install_pkg "haproxy=2.4.*"
     else
-        # Debian 8-10
+        # Debian 8-10 (buster and older) — HAProxy 1.8 (unchanged, was already working)
         curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
         echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net buster-backports-1.8 main >/etc/apt/sources.list.d/haproxy.list
         update_pkgs
         install_pkg "haproxy=1.8.*"
+    fi
+fi
+
+# ── Version-aware HAProxy configuration fix (apply to any existing install) ──
+# Strip bind-process and pidfile from the deployed config if present, then
+# validate and restart.  This makes compatibility-fix.sh idempotent — safe to
+# run on existing servers after an OS upgrade.
+CFG="/etc/haproxy/haproxy.cfg"
+if [ -f "$CFG" ]; then
+    echo "Applying version-aware HAProxy config fixes..."
+    BACKUP="${CFG}.bak.$(date +%Y%m%d%H%M%S)"
+    cp "$CFG" "$BACKUP"
+    sed -i '/^[[:space:]]*bind-process[[:space:]]/d' "$CFG"
+    sed -i '/^[[:space:]]*pidfile[[:space:]]/d'       "$CFG"
+    VALIDATE=$(haproxy -c -f "$CFG" 2>&1)
+    if [ $? -ne 0 ]; then
+        echo "HAProxy validation failed — restoring backup:"
+        echo "$VALIDATE"
+        cp "$BACKUP" "$CFG"
+    else
+        echo "HAProxy config validated. Restarting..."
+        systemctl daemon-reload
+        systemctl reset-failed haproxy 2>/dev/null || true
+        systemctl enable haproxy
+        systemctl restart haproxy
     fi
 fi
 
@@ -175,10 +217,10 @@ echo "Universal VPN Installer - Compatible with all Ubuntu/Debian versions"
 echo "OS: $OS_ID $OS_VERSION"
 
 # Now run the original installation script
-if [ -f "./genz.sh" ]; then
-    bash ./genz.sh
+if [ -f "./script.sh" ]; then
+    bash ./script.sh
 else
-    echo "Error: genz.sh not found in current directory"
+    echo "Error: script.sh not found in current directory"
     exit 1
 fi
 EOF
@@ -187,16 +229,16 @@ chmod +x /usr/local/bin/vpn-universal-install
 
 echo "Step 6: Updating existing scripts for compatibility..."
 
-# Update genz.sh for better compatibility
-if [ -f "./genz.sh" ]; then
+# Update script.sh for better compatibility
+if [ -f "./script.sh" ]; then
     # Backup original
-    cp genz.sh genz.sh.backup
+    cp script.sh script.sh.backup
     
-    # Update the OS detection in genz.sh
-    sed -i 's/System Request : Debian 9+\/Ubuntu 18.04+\/20+/System Request : Debian 8+\/Ubuntu 16.04+/' genz.sh
-    sed -i 's/BEST AUTOSCRIPT/BEST AUTOSCRIPT - UNIVERSAL VERSION/' genz.sh
+    # Update the OS detection in script.sh
+    sed -i 's/System Request : Debian 9+\/Ubuntu 18.04+\/20+/System Request : Debian 8+\/Ubuntu 16.04+/' script.sh
+    sed -i 's/BEST AUTOSCRIPT/BEST AUTOSCRIPT - UNIVERSAL VERSION/' script.sh
     
-    echo "Updated genz.sh for universal compatibility"
+    echo "Updated script.sh for universal compatibility"
 fi
 
 # Update kyt.sh for better compatibility
@@ -211,15 +253,12 @@ echo ""
 echo "=== Compatibility Fix Complete ==="
 echo ""
 echo "Your VPN scripts are now compatible with:"
-echo "✅ Ubuntu 16.04+ (including 18.04, 20.04, 22.04, 24.04)"
-echo "✅ Debian 8+ (including 9, 10, 11, 12)"
+echo "Ubuntu 16.04+ (including 18.04, 20.04, 22.04, 24.04)"
+echo "Debian 8+ (including 9, 10, 11, 12)"
 echo ""
 echo "To install VPN, run:"
-echo "bash genz.sh"
-echo ""
-echo "Or use the universal wrapper:"
-echo "vpn-universal-install"
+echo "bash script.sh"
 echo ""
 echo "Backup files created:"
-echo "- genz.sh.backup"
+echo "- script.sh.backup"
 echo "- kyt.sh.backup" 

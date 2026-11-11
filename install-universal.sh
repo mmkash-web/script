@@ -268,15 +268,30 @@ function first_setup(){
         update_packages
         install_package "software-properties-common"
         
-        # Add HAProxy repository based on Ubuntu version
+        # Install HAProxy with the correct version for each Ubuntu release.
+        # Ubuntu 20.04 → HAProxy 2.0 (bind-process still accepted but ignored)
+        # Ubuntu 22.04 → HAProxy 2.6 (bind-process fatal since 2.1; must NOT be in cfg)
+        # Ubuntu 24.04 → HAProxy 2.8 (same constraint as 22.04)
+        # Future Ubuntu → install from default repos; configure_haproxy() will handle
+        install_package "software-properties-common"
         VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-        if [ "$VERSION_NUM" -ge 2004 ]; then
-            # Ubuntu 20.04+ - use newer HAProxy
+        if [ "$VERSION_NUM" -ge 2404 ]; then
+            # Ubuntu 24.04+ — use HAProxy 2.8 from vbernat PPA
+            add-apt-repository ppa:vbernat/haproxy-2.8 -y
+            update_packages
+            install_package "haproxy=2.8.*" || install_package "haproxy"
+        elif [ "$VERSION_NUM" -ge 2204 ]; then
+            # Ubuntu 22.04 — use HAProxy 2.6 from vbernat PPA
+            add-apt-repository ppa:vbernat/haproxy-2.6 -y
+            update_packages
+            install_package "haproxy=2.6.*" || install_package "haproxy"
+        elif [ "$VERSION_NUM" -ge 2004 ]; then
+            # Ubuntu 20.04 — use HAProxy 2.0 (original working version)
             add-apt-repository ppa:vbernat/haproxy-2.0 -y
             update_packages
             install_package "haproxy=2.0.*"
         else
-            # Ubuntu 16.04-19.10 - use older HAProxy
+            # Ubuntu 16.04-19.10 — use HAProxy 1.8
             add-apt-repository ppa:vbernat/haproxy-1.8 -y
             update_packages
             install_package "haproxy=1.8.*"
@@ -287,14 +302,20 @@ function first_setup(){
         
         # Add HAProxy repository based on Debian version
         VERSION_NUM=$(echo $OS_VERSION | sed 's/\.//g')
-        if [ "$VERSION_NUM" -ge 110 ]; then
-            # Debian 11+ - use newer HAProxy
+        if [ "$VERSION_NUM" -ge 120 ]; then
+            # Debian 12 (bookworm) — use HAProxy 2.6
+            curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
+            echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net bookworm-backports-2.6 main >/etc/apt/sources.list.d/haproxy.list
+            update_packages
+            install_package "haproxy=2.6.*" || install_package "haproxy"
+        elif [ "$VERSION_NUM" -ge 110 ]; then
+            # Debian 11 (bullseye) — use HAProxy 2.4
             curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
             echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net bullseye-backports-2.4 main >/etc/apt/sources.list.d/haproxy.list
             update_packages
             install_package "haproxy=2.4.*"
         else
-            # Debian 8-10 - use older HAProxy
+            # Debian 8-10 (buster and older) — use HAProxy 1.8 (original working version)
             curl https://haproxy.debian.net/bernat.debian.org.gpg | gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
             echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" http://haproxy.debian.net buster-backports-1.8 main >/etc/apt/sources.list.d/haproxy.list
             update_packages

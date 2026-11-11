@@ -75,12 +75,58 @@ res1() {
     install_pkg "unzip"
     
     # Download and install menu
-    wget https://raw.githubusercontent.com/mmkash-web/script/main/ubuntu/menu.zip
-    unzip menu.zip
+    wget -q https://raw.githubusercontent.com/mmkash-web/script/main/ubuntu/menu.zip
+    unzip -q menu.zip
     chmod +x menu/*
     mv menu/* /usr/local/sbin
-    rm -rf menu
-    rm -rf menu.zip
+    rm -rf menu menu.zip
+
+    # ── Update Xray config.json ───────────────────────────────────
+    # Pulls the latest config from the repo. The placeholder UUID
+    # (1d1c1d94-...) stays in place; existing user accounts stored
+    # in the file are preserved because we only replace the file if
+    # it currently has no active user entries (lines starting with
+    # #& / ### / #! / #ss#). If users are present we skip the
+    # config overwrite to avoid wiping accounts.
+    has_users=$(grep -cE "^(#& |### |#! |#ss# )" /etc/xray/config.json 2>/dev/null || echo 0)
+    if [ "$has_users" -eq 0 ]; then
+        echo "Updating Xray config.json..."
+        cp /etc/xray/config.json /etc/xray/config.json.bak 2>/dev/null || true
+        wget -q -O /etc/xray/config.json \
+            "https://raw.githubusercontent.com/mmkash-web/script/main/ubuntu/config.json"
+        domain=$(cat /etc/xray/domain 2>/dev/null || echo "")
+        systemctl restart xray 2>/dev/null || true
+        echo "Xray config updated and restarted."
+    else
+        echo "Active Xray users found — skipping config.json overwrite to preserve accounts."
+    fi
+
+    # ── Update HAProxy config ─────────────────────────────────────
+    # Pulls the latest haproxy.cfg template and applies the domain
+    # substitution, then runs configure_haproxy-style validation.
+    if [ -f /etc/haproxy/haproxy.cfg ]; then
+        echo "Updating HAProxy config..."
+        cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak
+        domain=$(cat /etc/xray/domain 2>/dev/null || echo "")
+        wget -q -O /etc/haproxy/haproxy.cfg \
+            "https://raw.githubusercontent.com/mmkash-web/script/main/ubuntu/haproxy.cfg"
+        if [ -n "$domain" ]; then
+            sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg
+        fi
+        # Strip any bind-process / pidfile directives (fatal on HAProxy 2.1+)
+        sed -i '/^[[:space:]]*bind-process[[:space:]]/d' /etc/haproxy/haproxy.cfg
+        sed -i '/^[[:space:]]*pidfile[[:space:]]/d'       /etc/haproxy/haproxy.cfg
+        # Validate before restarting
+        if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+            systemctl reset-failed haproxy 2>/dev/null || true
+            systemctl restart haproxy 2>/dev/null || true
+            echo "HAProxy config updated and restarted."
+        else
+            echo "HAProxy config validation failed — restoring backup."
+            cp /etc/haproxy/haproxy.cfg.bak /etc/haproxy/haproxy.cfg
+        fi
+    fi
+
     rm -rf update.sh
 }
 
