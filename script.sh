@@ -507,6 +507,7 @@ rm -rf /etc/vmess/.vmess.db
     mkdir -p /etc/ssh
     mkdir -p /usr/bin/xray/
     mkdir -p /var/log/xray/
+    chown www-data:www-data /var/log/xray/
     mkdir -p /var/www/html
     mkdir -p /etc/kyt/limit/vmess/ip
     mkdir -p /etc/kyt/limit/vless/ip
@@ -518,9 +519,11 @@ rm -rf /etc/vmess/.vmess.db
     mkdir -p /etc/limit/ssh
     mkdir -p /etc/user-create
     chmod +x /var/log/xray
+    chown www-data:www-data /var/log/xray
     touch /etc/xray/domain
     touch /var/log/xray/access.log
     touch /var/log/xray/error.log
+    chown www-data:www-data /var/log/xray/access.log /var/log/xray/error.log
     touch /etc/vmess/.vmess.db
     touch /etc/vless/.vless.db
     touch /etc/trojan/.trojan.db
