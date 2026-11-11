@@ -81,6 +81,32 @@ res1() {
     mv menu/* /usr/local/sbin
     rm -rf menu menu.zip
 
+    # ── Fix Xray service file ─────────────────────────────────────
+    # The Xray installer creates a drop-in override pointing to
+    # /usr/local/etc/xray/config.json. Remove it so our service
+    # file (which uses /etc/xray/config.json) takes effect.
+    rm -rf /etc/systemd/system/xray.service.d
+    cat >/etc/systemd/system/xray.service <<'SVCEOF'
+[Unit]
+Description=Xray Service
+Documentation=https://github.com
+After=network.target nss-lookup.target
+
+[Service]
+User=www-data
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
+Restart=on-failure
+RestartPreventExitStatus=23
+LimitNPROC=10000
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
     # ── Update Xray config.json ───────────────────────────────────
     # Pulls the latest config from the repo. The placeholder UUID
     # (1d1c1d94-...) stays in place; existing user accounts stored

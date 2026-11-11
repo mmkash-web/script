@@ -690,8 +690,11 @@ cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem
     chmod +x /etc/systemd/system/runn.service
 
     # > Create Service
+    # Remove the override drop-in the Xray installer creates so our
+    # service file is the sole authority on the config path.
     rm -rf /etc/systemd/system/xray.service.d
     cat >/etc/systemd/system/xray.service <<EOF
+[Unit]
 Description=Xray Service
 Documentation=https://github.com
 After=network.target nss-lookup.target
@@ -709,7 +712,6 @@ LimitNOFILE=1000000
 
 [Install]
 WantedBy=multi-user.target
-
 EOF
 print_success "Configuration Packet"
 }
