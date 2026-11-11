@@ -75,7 +75,9 @@
         "decryption": "none",
         "clients": [
           {
-            "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
+            "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+            "email": "default"
+#vless
           }
         ]
       },
@@ -95,7 +97,9 @@
         "clients": [
           {
             "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
-            "alterId": 0
+            "alterId": 0,
+            "email": "default"
+#vmess
           }
         ]
       },
@@ -114,7 +118,9 @@
       "settings": {
         "clients": [
           {
-            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
+            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+            "email": "default"
+#trojanws
           }
         ]
       },
@@ -134,7 +140,9 @@
         "clients": [
           {
             "method": "aes-128-gcm",
-            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
+            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+            "email": "default"
+#ssws
           }
         ],
         "network": "tcp,udp"
@@ -155,7 +163,9 @@
         "decryption": "none",
         "clients": [
           {
-            "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
+            "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+            "email": "default"
+#vlessgrpc
           }
         ]
       },
@@ -175,7 +185,9 @@
         "clients": [
           {
             "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
-            "alterId": 0
+            "alterId": 0,
+            "email": "default"
+#vmessgrpc
           }
         ]
       },
@@ -194,7 +206,9 @@
       "settings": {
         "clients": [
           {
-            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
+            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+            "email": "default"
+#trojangrpc
           }
         ]
       },
@@ -214,7 +228,9 @@
         "clients": [
           {
             "method": "aes-128-gcm",
-            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
+            "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+            "email": "default"
+#ssgrpc
           }
         ],
         "network": "tcp,udp"
